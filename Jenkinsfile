@@ -112,7 +112,10 @@ CIEOF
                     sh '''
                         trap 'rm -f .env' EXIT
                         cp $ENV_FILE .env
-                        docker compose --env-file .env up -d --remove-orphans
+                        docker compose --env-file .env up -d --no-build --remove-orphans \
+                            rabbitmq redis eureka-service authservice product-service \
+                            purchase-service payment-service supplier-service warehouse-service \
+                            stockmovement-services analytics-service alert-service api-gateway
                     '''
                 }
             }
