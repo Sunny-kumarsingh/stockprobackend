@@ -58,14 +58,42 @@ pipeline {
             }
         }
 
-        // ── 5. DOCKER BUILD ───────────────────────────────────
+        // ── 5. DOCKER BUILD (uses pre-built JARs from Maven stage) ────
         stage('Docker Build') {
             steps {
                 withCredentials([file(credentialsId: 'stockpro-env', variable: 'ENV_FILE')]) {
                     sh '''
                         trap 'rm -f .env' EXIT
                         cp $ENV_FILE .env
-                        DOCKER_BUILDKIT=0 docker compose --env-file .env build
+
+                        SERVICES="alert-service analytics-service api-gateway authservice \
+                                  eureka-service payment-service product-service purchase-service \
+                                  stockmovement-services supplier-service warehouse-service"
+
+                        for svc in $SERVICES; do
+                            JAR=$(find "${svc}/target" -maxdepth 1 -name "*.jar" \
+                                  ! -name "*original*" 2>/dev/null | head -1)
+                            if [ -z "$JAR" ]; then
+                                echo "[SKIP] ${svc}: JAR not found in target/"
+                                continue
+                            fi
+
+                            cp "$JAR" "${svc}/app.jar"
+                            cat > "${svc}/Dockerfile.ci" <<'CIEOF'
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+COPY app.jar app.jar
+ENTRYPOINT ["java", "-jar", "app.jar"]
+CIEOF
+
+                            DOCKER_BUILDKIT=0 docker build \
+                                -t "stockpro-backend-${svc}:latest" \
+                                -f "${svc}/Dockerfile.ci" \
+                                "${svc}/"
+
+                            rm -f "${svc}/app.jar" "${svc}/Dockerfile.ci"
+                            echo "[DONE] stockpro-backend-${svc}:latest built successfully"
+                        done
                     '''
                 }
             }
