@@ -9,12 +9,10 @@ pipeline {
 
     environment {
         COMPOSE_FILE = 'docker-compose.yml'
-        JAVA_HOME    = tool name: 'JDK-17', type: 'jdk'
     }
 
     tools {
         maven 'Maven-3.9'
-        jdk   'JDK-17'
     }
 
     stages {
