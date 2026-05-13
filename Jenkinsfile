@@ -51,6 +51,7 @@ pipeline {
                     sh '''
                         mvn sonar:sonar \
                           -Dsonar.projectKey=stockpro \
+                          -Dsonar.login=$SONAR_AUTH_TOKEN \
                           --batch-mode
                     '''
                 }
