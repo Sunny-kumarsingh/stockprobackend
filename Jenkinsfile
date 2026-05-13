@@ -48,14 +48,12 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
-                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN_VAR')]) {
-                        sh '''
-                            mvn sonar:sonar \
-                              -Dsonar.projectKey=stockpro \
-                              -Dsonar.login=$SONAR_TOKEN_VAR \
-                              --batch-mode
-                        '''
-                    }
+                    sh '''
+                        mvn sonar:sonar \
+                          -Dsonar.projectKey=stockpro \
+                          -Dsonar.token=$SONAR_AUTH_TOKEN \
+                          --batch-mode
+                    '''
                 }
             }
         }
