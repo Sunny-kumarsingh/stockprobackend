@@ -35,7 +35,7 @@ pipeline {
         // ── 3. UNIT TESTS ────────────────────────────────────
         stage('Run Tests') {
             steps {
-                sh 'mvn test --batch-mode -Dtest="!*ApplicationTests" -DfailIfNoTests=false'
+                sh 'mvn test --batch-mode -Dtest="!*ApplicationTests" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false'
             }
             post {
                 always {
