@@ -46,15 +46,11 @@ pipeline {
 
         // ── 4. CODE QUALITY (SonarQube) ───────────────────────
         stage('SonarQube Analysis') {
-            when {
-                branch 'main'
-            }
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
                         mvn sonar:sonar \
                           -Dsonar.projectKey=stockpro \
-                          -Dsonar.host.url=http://localhost:9000 \
                           --batch-mode
                     '''
                 }
