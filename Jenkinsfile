@@ -112,7 +112,20 @@ CIEOF
                     sh '''
                         trap 'rm -f .env' EXIT
                         cp $ENV_FILE .env
-                        docker compose --env-file .env up -d --no-build --remove-orphans --force-recreate \
+                        # Stop & remove any existing backend containers (from any previous session)
+                        docker stop stockpro-eureka stockpro-rabbitmq stockpro-redis \
+                            stockpro-auth stockpro-product stockpro-purchase \
+                            stockpro-payment stockpro-supplier stockpro-warehouse \
+                            stockpro-stockmovement stockpro-analytics stockpro-alert \
+                            stockpro-gateway 2>/dev/null || true
+                        docker rm -f stockpro-eureka stockpro-rabbitmq stockpro-redis \
+                            stockpro-auth stockpro-product stockpro-purchase \
+                            stockpro-payment stockpro-supplier stockpro-warehouse \
+                            stockpro-stockmovement stockpro-analytics stockpro-alert \
+                            stockpro-gateway 2>/dev/null || true
+
+                        # Deploy fresh containers using pre-built images
+                        docker compose --env-file .env up -d --no-build --remove-orphans \
                             rabbitmq redis eureka-service authservice product-service \
                             purchase-service payment-service supplier-service warehouse-service \
                             stockmovement-services analytics-service alert-service api-gateway
