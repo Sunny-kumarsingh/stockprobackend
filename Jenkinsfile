@@ -61,21 +61,30 @@ pipeline {
         // ── 5. DOCKER BUILD ───────────────────────────────────
         stage('Docker Build') {
             steps {
-                sh 'docker compose build --no-cache'
+                withCredentials([file(credentialsId: 'stockpro-env', variable: 'ENV_FILE')]) {
+                    sh '''
+                        trap 'rm -f .env' EXIT
+                        cp $ENV_FILE .env
+                        docker compose --env-file .env build --no-cache
+                    '''
+                }
             }
         }
 
         // ── 6. DEPLOY (main branch only) ──────────────────────
         stage('Deploy') {
             when {
-                branch 'main'
+                anyOf {
+                    branch 'main'
+                    expression { env.GIT_BRANCH == 'main' || env.GIT_BRANCH == 'origin/main' }
+                }
             }
             steps {
                 withCredentials([file(credentialsId: 'stockpro-env', variable: 'ENV_FILE')]) {
                     sh '''
+                        trap 'rm -f .env' EXIT
                         cp $ENV_FILE .env
                         docker compose --env-file .env up -d --remove-orphans
-                        rm -f .env
                     '''
                 }
             }
