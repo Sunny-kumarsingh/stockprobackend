@@ -65,7 +65,7 @@ pipeline {
                     sh '''
                         trap 'rm -f .env' EXIT
                         cp $ENV_FILE .env
-                        docker compose --env-file .env build --no-cache
+                        DOCKER_BUILDKIT=0 docker compose --env-file .env build
                     '''
                 }
             }
