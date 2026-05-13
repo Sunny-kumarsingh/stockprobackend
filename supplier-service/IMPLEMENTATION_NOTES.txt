@@ -1,0 +1,218 @@
+====================================================
+  SUPPLIER SERVICE — IMPLEMENTATION NOTES
+  Project: StockPro | Service Port: 8085
+  Based on PDF: Section 4.5 (Supplier-Service)
+====================================================
+
+----------------------------------------------------
+FILE 1: Supplier.java (Entity)
+Location: com/stockpro/supplier/entity/Supplier.java
+----------------------------------------------------
+PDF FIELDS: supplierId, name, contactPerson, email,
+  phone, address, city, country, taxId, paymentTerms,
+  leadTimeDays, rating, isActive
+
+STATUS: Matches PDF exactly. No extra fields added.
+
+NOTES:
+- @Entity maps to 'suppliers' table in MySQL
+- @Data (Lombok) auto-generates getters, setters, equals, hashCode
+- @NoArgsConstructor + @AllArgsConstructor required by JPA
+- isActive = true by default (set in createSupplier() service method)
+- rating = Double (nullable) — set via updateRating() after GRN
+
+WHY NO createdAt/updatedAt?
+  PDF does not mention these fields in the Supplier entity.
+  Kept strictly to PDF spec to avoid scope creep.
+
+----------------------------------------------------
+FILE 2: SupplierRepository.java (Repository)
+Location: com/stockpro/supplier/repository/SupplierRepository.java
+----------------------------------------------------
+PDF METHODS: findBySupplierId(), findByCity(), findByCountry(),
+  searchByName(), findByIsActive(), findByTaxId(),
+  countByIsActive(), deleteBySupplied()
+
+CHANGE 1 — searchByName():
+  WHY: PDF names this 'searchByName()' but PDF §2.4 says
+    "Search suppliers by name, city, or country".
+    Spring Data JPA cannot auto-derive a query that searches
+    across multiple fields. A custom @Query was added.
+  WHERE: Line 22-28 in SupplierRepository.java
+  QUERY: Searches LOWER(name) OR LOWER(city) OR LOWER(country)
+    using LIKE with wildcard for case-insensitive partial match.
+
+CHANGE 2 — findByTaxId() return type:
+  WHY: Changed from 'Supplier' to 'Optional<Supplier>' to safely
+    handle cases where no supplier has the given taxId,
+    preventing NullPointerException.
+  WHERE: Line 20 in SupplierRepository.java
+
+CHANGE 3 — deleteBySupplied() vs deleteBySupplierId():
+  WHY: PDF has a typo ('deleteBySupplied'). Kept method as
+    deleteBySupplierId() to match the intent.
+  NOTE: This method is defined in repo but deleteSupplier()
+    in ServiceImpl uses deleteById() instead (see File 3 note).
+
+----------------------------------------------------
+FILE 3: SupplierService.java (Interface)
+Location: com/stockpro/supplier/service/SupplierService.java
+----------------------------------------------------
+PDF METHODS: createSupplier(), getById(), getAllSuppliers(),
+  searchSuppliers(), updateSupplier(), deactivateSupplier(),
+  deleteSupplier(), getByCity(), getByCountry(), updateRating()
+
+STATUS: Matches PDF exactly. All 10 methods declared.
+
+----------------------------------------------------
+FILE 4: SupplierServiceImpl.java (Business Logic)
+Location: com/stockpro/supplier/service/impl/SupplierServiceImpl.java
+----------------------------------------------------
+CHANGE 1 — deleteSupplier():
+  WHY: Changed from supplierRepo.deleteBySupplierId(id) to
+    supplierRepo.deleteById(id).
+    Reason: Spring Data derived delete queries (deleteBySupplierId)
+    require @Transactional annotation to work. Using standard
+    JpaRepository.deleteById() avoids this requirement.
+  WHERE: deleteSupplier() method
+
+CHANGE 2 — deactivateSupplier():
+  WHY: Sets isActive=false (soft delete). PDF §4.5 says:
+    "prevents new POs being raised against inactive suppliers
+    while preserving historical PO records."
+  WHERE: deactivateSupplier() method
+  IMPORTANT: This does NOT delete the record — it only flags it.
+    The Purchase Order service must check isActive=true
+    before allowing new POs against a supplier.
+
+CHANGE 3 — updateRating():
+  WHY: PDF §2.4 says "Rate supplier performance after goods receipt."
+    Rating is set directly (not averaged here) because the
+    Purchase Order service will calculate the score and pass it.
+    Simple set operation keeps this service focused.
+  WHERE: updateRating() method
+
+CHANGE 4 — searchSuppliers():
+  WHY: Calls supplierRepo.searchByName(query) which now uses
+    the custom @Query that searches name, city, and country.
+    Method name matches PDF spec exactly.
+  WHERE: searchSuppliers() method
+
+----------------------------------------------------
+FILE 5: SupplierController.java (REST Resource)
+Location: com/stockpro/supplier/controller/SupplierController.java
+PDF NAME: SupplierResource
+----------------------------------------------------
+PDF ENDPOINTS:
+  POST   /suppliers         — create
+  GET    /suppliers         — all
+  GET    /suppliers/{id}    — by id
+  GET    /suppliers/search  — search
+  GET    /suppliers/city    — by city
+  GET    /suppliers/country — by country
+  PUT    /suppliers/{id}         — update
+  PUT    /suppliers/{id}/deactivate — deactivate
+  PUT    /suppliers/{id}/rating  — update rating
+  DELETE /suppliers/{id}   — (NOT in PDF but added for Admin cleanup)
+
+CHANGE 1 — Added @PreAuthorize annotations:
+  WHY: PDF §2.4 defines role-based access.
+    Without @PreAuthorize, any authenticated user can modify data.
+    @EnableMethodSecurity in SecurityConfig activates these.
+  ROLE RULES:
+    - ADMIN + MANAGER: create, update, rating
+    - ADMIN only: deactivate, delete
+    - ALL roles: all GET endpoints (view only)
+
+CHANGE 2 — void -> String on deactivate/delete:
+  WHY: Returning void gives no feedback to the frontend.
+    String response ("Supplier deactivated ✅") allows the
+    frontend to show success messages.
+  WHERE: deactivate() and delete() methods
+
+CHANGE 3 — DELETE endpoint:
+  WHY: Not mentioned in PDF SupplierResource spec but added
+    for Admin cleanup of test/duplicate data.
+    Normal deactivation flow uses PUT /deactivate (soft delete).
+  RESTRICTION: ADMIN only.
+
+----------------------------------------------------
+FILE 6: GlobalExceptionHandler.java
+Location: com/stockpro/supplier/exception/GlobalExceptionHandler.java
+----------------------------------------------------
+HANDLERS:
+  RuntimeException   -> 400 Bad Request (supplier not found, etc.)
+  AccessDeniedException -> 403 Forbidden (wrong role)
+  IllegalArgumentException -> 400 Bad Request (invalid input)
+
+NOTE: This is BETTER than warehouse-service's handler which
+  catches AccessDeniedException as a 400 (incorrect).
+  Here, role violations correctly return 403 Forbidden.
+
+----------------------------------------------------
+SECURITY FILES (JwtUtil, JwtAuthenticationFilter, SecurityConfig)
+Location: security/, filter/, config/ packages
+----------------------------------------------------
+WHY NEEDED IN EACH SERVICE?
+  The API Gateway routes requests but does NOT validate JWT tokens.
+  If supplier-service had no security, anyone knowing port 8085
+  could call APIs directly, bypassing authentication entirely.
+
+WHY SAME CODE AS WAREHOUSE-SERVICE?
+  This is a known trade-off in microservices (DRY violation).
+  Proper fix = shared security library (out of scope for this project).
+  The EShoppingZone reference pattern (PDF) uses this copy approach.
+
+HOW IT WORKS:
+  1. Request arrives with "Authorization: Bearer <token>"
+  2. JwtAuthenticationFilter extracts and validates the token
+  3. Role is read from JWT claims (e.g., "ADMIN")
+  4. Authority set as "ROLE_ADMIN" (ROLE_ prefix added)
+  5. @PreAuthorize("hasRole('ADMIN')") then checks "ROLE_ADMIN"
+
+JWT SECRET: Must match authservice exactly:
+  jwt.secret=mysecretkeymysecretkeymysecretkey12345
+
+----------------------------------------------------
+DATABASE SETUP
+----------------------------------------------------
+Database: stockpro_supplier (must be created manually)
+SQL:   CREATE DATABASE stockpro_supplier;
+Port:  3306 (MySQL)
+User:  root
+Table: 'suppliers' (auto-created by Hibernate ddl-auto=update)
+
+IMPORTANT: The database must exist BEFORE starting the service.
+  Hibernate cannot create a database, only tables inside one.
+
+----------------------------------------------------
+INTER-SERVICE COMMUNICATION
+----------------------------------------------------
+WHO CALLS supplier-service?
+  -> Purchase Order Service (future):
+     GET /suppliers/{id}     — validate supplier before creating PO
+     PUT /suppliers/{id}/rating — update rating after goods receipt (GRN)
+
+API Gateway routes /api/v1/suppliers/** -> supplier-service:8085
+
+----------------------------------------------------
+SERVICE STATUS AFTER THESE CHANGES
+----------------------------------------------------
+Entity      : OK - matches PDF exactly
+Repository  : OK - searchByName uses @Query for multi-field search
+Service     : OK - all 10 PDF methods implemented
+Controller  : OK - all endpoints secured with @PreAuthorize
+Security    : OK - JWT filter + SecurityConfig configured
+Exception   : OK - GlobalExceptionHandler with correct HTTP codes
+Config      : OK - port 8085, DB configured, JWT secret added
+
+NEXT STEPS:
+  1. Create MySQL database: CREATE DATABASE stockpro_supplier;
+  2. Start supplier-service in Eclipse
+  3. Test endpoints via Postman
+  4. Build frontend (SupplierList, AddSupplier, EditSupplier pages)
+  5. Start Purchase Order Service
+
+====================================================
+  END OF NOTES
+====================================================

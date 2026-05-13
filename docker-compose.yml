@@ -1,0 +1,389 @@
+# ============================================================
+# StockPro — Docker Compose
+#: Docker with Docker Compose
+# Run from: e:\myproject\sprintproject\stockpro\
+# Command:  docker-compose up --build
+# ============================================================
+
+services:
+
+  # ──────────────────────────────────────
+  # INFRASTRUCTURE — RabbitMQ
+  # ──────────────────────────────────────
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: stockpro-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    networks:
+      - stockpro-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: stockpro-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - stockpro-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────────────────────────────
+  # SERVICE DISCOVERY — Eureka (starts first)
+  # ──────────────────────────────────────
+
+  eureka-service:
+    build: ./eureka-service
+    container_name: stockpro-eureka
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    networks:
+      - stockpro-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8761/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────────────────────────────
+  # BACKEND MICROSERVICES
+  # All connecting to host.docker.internal:3306 (Local Windows MySQL)
+  # ──────────────────────────────────────
+
+  authservice:
+    build: ./authservice
+    container_name: stockpro-auth
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/auth_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - EUREKA_INSTANCE_HOSTNAME=authservice
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  product-service:
+    build: ./product-service
+    container_name: stockpro-product
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_product?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=product-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+    volumes:
+      - product-uploads:/app/uploads
+
+  warehouse-service:
+    build: ./warehouse-service
+    container_name: stockpro-warehouse
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_warehouse_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - EUREKA_INSTANCE_HOSTNAME=warehouse-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  purchase-service:
+    build: ./purchase-service
+    container_name: stockpro-purchase
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_purchase_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - EUREKA_INSTANCE_HOSTNAME=purchase-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  supplier-service:
+    build: ./supplier-service
+    container_name: stockpro-supplier
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_supplier?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=supplier-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  stockmovement-services:
+    build: ./stockmovement-services
+    container_name: stockpro-movement
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_movements?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=stockmovement-services
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  analytics-service:
+    build: ./analytics-service
+    container_name: stockpro-analytics
+    restart: unless-stopped
+    ports:
+      - "8087:8087"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_analytics_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=analytics-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  alert-service:
+    build: ./alert-service
+    container_name: stockpro-alert
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_alert_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - SPRING_MAIL_USERNAME=${MAIL_USERNAME}
+      - SPRING_MAIL_PASSWORD=${MAIL_PASSWORD}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=alert-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  # ─────────────────────────────────────────────────────────
+  # PAYMENT SERVICE — Razorpay gateway on port 8089
+  # ─────────────────────────────────────────────────────────
+  payment-service:
+    build: ./payment-service
+    container_name: stockpro-payment
+    restart: unless-stopped
+    ports:
+      - "8089:8089"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_payment?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - JWT_SECRET=${JWT_SECRET}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - EUREKA_INSTANCE_HOSTNAME=payment-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+
+
+  # ──────────────────────────────────────
+  # API GATEWAY — Entry point for all requests
+  # ──────────────────────────────────────
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: stockpro-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  # ──────────────────────────────────────
+  # FRONTEND — React/Vite served via Nginx
+  # Path goes up one level to stockproFrontend
+  # ──────────────────────────────────────
+
+  frontend:
+    build: ../stockproFrontend/stockProFrontend
+    container_name: stockpro-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api-gateway
+    networks:
+      - stockpro-network
+
+  # ──────────────────────────────────────
+  # SONARQUBE — Code Quality Analysis
+  # UI: http://localhost:9000
+  # Login: admin / admin (change on first login)
+  # ──────────────────────────────────────
+
+  sonardb:
+    image: postgres:15-alpine
+    container_name: stockpro-sonardb
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${SONAR_USER}
+      - POSTGRES_PASSWORD=${SONAR_PASSWORD}
+      - POSTGRES_DB=sonar
+    networks:
+      - stockpro-network
+
+  sonarqube:
+    image: sonarqube:lts-community
+    container_name: stockpro-sonarqube
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://sonardb:5432/sonar
+      - SONAR_JDBC_USERNAME=${SONAR_USER}
+      - SONAR_JDBC_PASSWORD=${SONAR_PASSWORD}
+    depends_on:
+      - sonardb
+    networks:
+      - stockpro-network
+
+# ──────────────────────────────────────
+# NETWORKS
+# ──────────────────────────────────────
+
+networks:
+  stockpro-network:
+    driver: bridge
+
+# ──────────────────────────────────────
+# VOLUMES
+# ──────────────────────────────────────
+
+volumes:
+  product-uploads:
+    driver: local

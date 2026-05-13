@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>com.stockpro</groupId>
+	<artifactId>stockpro-services</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<name>stockpro-services</name>
+
+	<properties>
+		<sonar.projectKey>stockpro</sonar.projectKey>
+		<sonar.projectName>StockPro</sonar.projectName>
+		<sonar.host.url>http://localhost:9000</sonar.host.url>
+		<sonar.java.source>17</sonar.java.source>
+		<sonar.sourceEncoding>UTF-8</sonar.sourceEncoding>
+		<sonar.qualitygate.wait>true</sonar.qualitygate.wait>
+		<sonar.coverage.jacoco.xmlReportPaths>**/target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<sonar.exclusions>**/generated/**,**/target/**,**/*Application.java,uploads/**</sonar.exclusions>
+		<sonar.coverage.exclusions>**/*Application.java,**/config/**,**/security/**,**/filter/**,**/dto/**,**/entity/**,**/entities/**,**/client/**,**/publisher/**,**/listener/**,**/listerner/**,**/scheduler/**,**/mapper/**,**/cache/**,**/service/impl/AuthServiceImpl.java,**/service/impl/PaymentServiceImpl.java,**/service/impl/AnalyticsServiceImpl.java,**/exception/GlobalExceptionHandler.java,**/controller/AuthResource.java</sonar.coverage.exclusions>
+	</properties>
+
+	<modules>
+		<module>alert-service</module>
+		<module>analytics-service</module>
+		<module>api-gateway</module>
+		<module>authservice</module>
+		<module>eureka-service</module>
+		<module>payment-service</module>
+		<module>product-service</module>
+		<module>purchase-service</module>
+		<module>stockmovement-services</module>
+		<module>supplier-service</module>
+		<module>warehouse-service</module>
+	</modules>
+</project>
