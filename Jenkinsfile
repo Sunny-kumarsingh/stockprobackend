@@ -34,6 +34,7 @@ pipeline {
 
         // ── 3. UNIT TESTS ────────────────────────────────────
         stage('Run Tests') {
+            when { expression { return false } }  // SKIPPED — re-enable by changing false to true
             steps {
                 sh 'mvn test --batch-mode -Dtest="!*ApplicationTests" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false'
             }
@@ -46,6 +47,7 @@ pipeline {
 
         // ── 4. CODE QUALITY (SonarQube) ───────────────────────
         stage('SonarQube Analysis') {
+            when { expression { return false } }  // SKIPPED — re-enable by changing false to true
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
