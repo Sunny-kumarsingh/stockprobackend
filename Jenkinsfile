@@ -1,6 +1,27 @@
 pipeline {
     agent any
 
+    parameters {
+        choice(
+            name: 'SERVICE_NAME',
+            choices: [
+                'all',
+                'alert-service',
+                'analytics-service',
+                'api-gateway',
+                'authservice',
+                'eureka-service',
+                'payment-service',
+                'product-service',
+                'purchase-service',
+                'stockmovement-services',
+                'supplier-service',
+                'warehouse-service'
+            ],
+            description: 'Choose all services or one backend service to build and push.'
+        )
+    }
+
     environment {
         DOCKERHUB_NAMESPACE = 'sunnysingh12'
         DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
@@ -20,7 +41,14 @@ pipeline {
 
         stage('Maven Build') {
             steps {
-                sh 'mvn clean package -DskipTests --batch-mode'
+                sh '''
+                    set -e
+                    if [ "$SERVICE_NAME" = "all" ]; then
+                        mvn clean package -DskipTests --batch-mode
+                    else
+                        mvn clean package -DskipTests --batch-mode -pl "$SERVICE_NAME" -am
+                    fi
+                '''
             }
         }
 
@@ -60,9 +88,13 @@ pipeline {
                     sh '''
                         set -e
 
-                        SERVICES="alert-service analytics-service api-gateway authservice \
-                                  eureka-service payment-service product-service purchase-service \
-                                  stockmovement-services supplier-service warehouse-service"
+                        if [ "$SERVICE_NAME" = "all" ]; then
+                            SERVICES="alert-service analytics-service api-gateway authservice \
+                                      eureka-service payment-service product-service purchase-service \
+                                      stockmovement-services supplier-service warehouse-service"
+                        else
+                            SERVICES="$SERVICE_NAME"
+                        fi
 
                         IMAGE_TAG="${GIT_COMMIT:-manual}"
                         IMAGE_TAG="$(printf "%s" "$IMAGE_TAG" | cut -c1-12)"
