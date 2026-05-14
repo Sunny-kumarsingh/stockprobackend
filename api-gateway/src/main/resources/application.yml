@@ -16,7 +16,7 @@ spring:
             allowedOriginPatterns:
               - "http://localhost:5173"
               - "http://localhost:5174"
-              - "https://kaleidoscopic-wisp-0444f3.netlify.app"
+              - "https://stockpro-management.netlify.app"
               - "https://*.netlify.app"
             allowedMethods:
               - GET
