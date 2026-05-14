@@ -1,0 +1,326 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: stockpro-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - stockpro-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    container_name: stockpro-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - stockpro-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  eureka-service:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-eureka-service:${IMAGE_TAG:-latest}
+    container_name: stockpro-eureka
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    networks:
+      - stockpro-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8761/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  authservice:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-authservice:${IMAGE_TAG:-latest}
+    container_name: stockpro-auth
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/auth_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - EUREKA_INSTANCE_HOSTNAME=authservice
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  product-service:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-product-service:${IMAGE_TAG:-latest}
+    container_name: stockpro-product
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_product?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=product-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+    volumes:
+      - product-uploads:/app/uploads
+
+  warehouse-service:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-warehouse-service:${IMAGE_TAG:-latest}
+    container_name: stockpro-warehouse
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_warehouse_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - EUREKA_INSTANCE_HOSTNAME=warehouse-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  purchase-service:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-purchase-service:${IMAGE_TAG:-latest}
+    container_name: stockpro-purchase
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_purchase_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - EUREKA_INSTANCE_HOSTNAME=purchase-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  supplier-service:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-supplier-service:${IMAGE_TAG:-latest}
+    container_name: stockpro-supplier
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_supplier?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=supplier-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  stockmovement-services:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-stockmovement-services:${IMAGE_TAG:-latest}
+    container_name: stockpro-movement
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_movements?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=stockmovement-services
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  analytics-service:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-analytics-service:${IMAGE_TAG:-latest}
+    container_name: stockpro-analytics
+    restart: unless-stopped
+    ports:
+      - "8087:8087"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_analytics_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=analytics-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  alert-service:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-alert-service:${IMAGE_TAG:-latest}
+    container_name: stockpro-alert
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_alert_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - SPRING_MAIL_USERNAME=${MAIL_USERNAME}
+      - SPRING_MAIL_PASSWORD=${MAIL_PASSWORD}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=alert-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  payment-service:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-payment-service:${IMAGE_TAG:-latest}
+    container_name: stockpro-payment
+    restart: unless-stopped
+    ports:
+      - "8089:8089"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/stockpro_payment?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - JWT_SECRET=${JWT_SECRET}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - EUREKA_INSTANCE_HOSTNAME=payment-service
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+  api-gateway:
+    image: ${DOCKERHUB_NAMESPACE:-sunnykumarsingh}/stockpro-backend-api-gateway:${IMAGE_TAG:-latest}
+    container_name: stockpro-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka/
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      eureka-service:
+        condition: service_healthy
+    networks:
+      - stockpro-network
+
+networks:
+  stockpro-network:
+    driver: bridge
+
+volumes:
+  product-uploads:
+    driver: local
+  rabbitmq_data:
+    driver: local

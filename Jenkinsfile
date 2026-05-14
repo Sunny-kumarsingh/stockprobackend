@@ -1,14 +1,9 @@
-// ============================================================
-// StockPro Backend — Jenkinsfile
-// Repo: stockpro (Spring Boot Microservices)
-// Stages: Build → Test → Docker Build → Deploy
-// ============================================================
-
 pipeline {
     agent any
 
     environment {
-        COMPOSE_FILE = 'docker-compose.yml'
+        DOCKERHUB_NAMESPACE = 'sunnysingh12'
+        DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
     }
 
     tools {
@@ -16,8 +11,6 @@ pipeline {
     }
 
     stages {
-
-        // ── 1. CHECKOUT ─────────────────────────────────────
         stage('Checkout') {
             steps {
                 checkout scm
@@ -25,16 +18,14 @@ pipeline {
             }
         }
 
-        // ── 2. BUILD ALL MICROSERVICES ───────────────────────
         stage('Maven Build') {
             steps {
                 sh 'mvn clean package -DskipTests --batch-mode'
             }
         }
 
-        // ── 3. UNIT TESTS ────────────────────────────────────
         stage('Run Tests') {
-            when { expression { return false } }  // SKIPPED — re-enable by changing false to true
+            when { expression { return false } }
             steps {
                 sh 'mvn test --batch-mode -Dtest="!*ApplicationTests" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false'
             }
@@ -45,9 +36,8 @@ pipeline {
             }
         }
 
-        // ── 4. CODE QUALITY (SonarQube) ───────────────────────
         stage('SonarQube Analysis') {
-            when { expression { return false } }  // SKIPPED — re-enable by changing false to true
+            when { expression { return false } }
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
@@ -60,21 +50,27 @@ pipeline {
             }
         }
 
-        // ── 5. DOCKER BUILD (uses pre-built JARs from Maven stage) ────
-        stage('Docker Build') {
+        stage('Docker Build & Push') {
             steps {
-                withCredentials([file(credentialsId: 'stockpro-env', variable: 'ENV_FILE')]) {
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKERHUB_CREDENTIALS}",
+                    usernameVariable: 'DOCKERHUB_USERNAME',
+                    passwordVariable: 'DOCKERHUB_TOKEN'
+                )]) {
                     sh '''
-                        trap 'rm -f .env' EXIT
-                        cp $ENV_FILE .env
+                        set -e
 
                         SERVICES="alert-service analytics-service api-gateway authservice \
                                   eureka-service payment-service product-service purchase-service \
                                   stockmovement-services supplier-service warehouse-service"
 
+                        IMAGE_TAG="${GIT_COMMIT:-manual}"
+                        IMAGE_TAG="$(printf "%s" "$IMAGE_TAG" | cut -c1-12)"
+
+                        printf "%s" "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
                         for svc in $SERVICES; do
-                            JAR=$(find "${svc}/target" -maxdepth 1 -name "*.jar" \
-                                  ! -name "*original*" 2>/dev/null | head -1)
+                            JAR=$(find "${svc}/target" -maxdepth 1 -name "*.jar" ! -name "*original*" 2>/dev/null | head -1)
                             if [ -z "$JAR" ]; then
                                 echo "[SKIP] ${svc}: JAR not found in target/"
                                 continue
@@ -89,68 +85,31 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 CIEOF
 
                             DOCKER_BUILDKIT=0 docker build \
-                                -t "stockpro-backend-${svc}:latest" \
+                                -t "${DOCKERHUB_NAMESPACE}/stockpro-backend-${svc}:latest" \
+                                -t "${DOCKERHUB_NAMESPACE}/stockpro-backend-${svc}:${IMAGE_TAG}" \
                                 -f "${svc}/Dockerfile.ci" \
                                 "${svc}/"
 
+                            docker push "${DOCKERHUB_NAMESPACE}/stockpro-backend-${svc}:latest"
+                            docker push "${DOCKERHUB_NAMESPACE}/stockpro-backend-${svc}:${IMAGE_TAG}"
+
                             rm -f "${svc}/app.jar" "${svc}/Dockerfile.ci"
-                            echo "[DONE] stockpro-backend-${svc}:latest built successfully"
+                            echo "[DONE] ${DOCKERHUB_NAMESPACE}/stockpro-backend-${svc}:${IMAGE_TAG} pushed successfully"
                         done
+
+                        docker logout
                     '''
                 }
             }
         }
-
-        // ── 6. DEPLOY (main branch only) ──────────────────────
-        stage('Deploy') {
-            when {
-                anyOf {
-                    branch 'main'
-                    expression { env.GIT_BRANCH == 'main' || env.GIT_BRANCH == 'origin/main' }
-                }
-            }
-            steps {
-                withCredentials([file(credentialsId: 'stockpro-env', variable: 'ENV_FILE')]) {
-                    sh '''
-                        trap 'rm -f .env' EXIT
-                        cp $ENV_FILE .env
-
-                        # Stop & remove any existing backend containers
-                        docker rm -f \
-                            stockpro-eureka stockpro-rabbitmq stockpro-redis \
-                            stockpro-auth stockpro-product stockpro-purchase \
-                            stockpro-payment stockpro-supplier stockpro-warehouse \
-                            stockpro-movement stockpro-analytics stockpro-alert \
-                            stockpro-gateway 2>/dev/null || true
-
-                        # Remove corrupted RabbitMQ volume (fresh start every deploy)
-                        docker volume rm stockpro_rabbitmq_data 2>/dev/null || true
-
-                        # Deploy fresh containers using pre-built images
-                        docker compose --env-file .env up -d --no-build --remove-orphans \
-                            rabbitmq redis eureka-service authservice product-service \
-                            purchase-service payment-service supplier-service warehouse-service \
-                            stockmovement-services analytics-service alert-service api-gateway || {
-                                echo "[ERROR] Docker deploy failed. Current containers:"
-                                docker ps -a
-                                echo "[ERROR] RabbitMQ logs:"
-                                docker logs stockpro-rabbitmq || true
-                                exit 1
-                            }
-                    '''
-                }
-            }
-        }
-
     }
 
-    // ── POST ACTIONS ─────────────────────────────────────────
     post {
         success {
-            echo ' Backend pipeline succeeded!'
+            echo 'Backend images built and pushed successfully!'
         }
         failure {
-            echo ' Backend pipeline failed!'
+            echo 'Backend pipeline failed!'
         }
         always {
             cleanWs()
