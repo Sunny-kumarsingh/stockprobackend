@@ -23,6 +23,14 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -37,6 +45,14 @@ services:
       - "6379:6379"
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 128M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -55,6 +71,14 @@ services:
       - "8761:8761"
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 384M
+        reservations:
+          cpus: '0.10'
+          memory: 192M
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8761/actuator/health"]
       interval: 15s
@@ -89,6 +113,14 @@ services:
         condition: service_healthy
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
 
   product-service:
     build: ./product-service
@@ -119,6 +151,14 @@ services:
       - stockpro-network
     volumes:
       - product-uploads:/app/uploads
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
 
   warehouse-service:
     build: ./warehouse-service
@@ -147,6 +187,14 @@ services:
         condition: service_healthy
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
 
   purchase-service:
     build: ./purchase-service
@@ -175,6 +223,14 @@ services:
         condition: service_healthy
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
 
   supplier-service:
     build: ./supplier-service
@@ -195,6 +251,14 @@ services:
         condition: service_healthy
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 384M
+        reservations:
+          cpus: '0.10'
+          memory: 192M
 
   stockmovement-services:
     build: ./stockmovement-services
@@ -219,6 +283,14 @@ services:
         condition: service_healthy
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 384M
+        reservations:
+          cpus: '0.10'
+          memory: 192M
 
   analytics-service:
     build: ./analytics-service
@@ -247,6 +319,14 @@ services:
         condition: service_healthy
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
 
   alert-service:
     build: ./alert-service
@@ -273,6 +353,14 @@ services:
         condition: service_healthy
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 384M
+        reservations:
+          cpus: '0.10'
+          memory: 192M
 
   # ─────────────────────────────────────────────────────────
   # PAYMENT SERVICE — Razorpay gateway on port 8089
@@ -302,6 +390,14 @@ services:
         condition: service_healthy
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 384M
+        reservations:
+          cpus: '0.10'
+          memory: 192M
 
 
 
@@ -323,6 +419,14 @@ services:
         condition: service_healthy
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
 
   # ──────────────────────────────────────
   # FRONTEND — React/Vite served via Nginx
@@ -339,6 +443,14 @@ services:
       - api-gateway
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   # ──────────────────────────────────────
   # SONARQUBE — Code Quality Analysis
@@ -356,6 +468,14 @@ services:
       - POSTGRES_DB=sonar
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
 
   sonarqube:
     image: sonarqube:lts-community
@@ -371,6 +491,14 @@ services:
       - sonardb
     networks:
       - stockpro-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.50'
+          memory: 2G
+        reservations:
+          cpus: '0.50'
+          memory: 1G
 
 # ──────────────────────────────────────
 # NETWORKS
