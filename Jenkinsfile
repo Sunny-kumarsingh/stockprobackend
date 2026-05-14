@@ -130,7 +130,13 @@ CIEOF
                         docker compose --env-file .env up -d --no-build --remove-orphans \
                             rabbitmq redis eureka-service authservice product-service \
                             purchase-service payment-service supplier-service warehouse-service \
-                            stockmovement-services analytics-service alert-service api-gateway
+                            stockmovement-services analytics-service alert-service api-gateway || {
+                                echo "[ERROR] Docker deploy failed. Current containers:"
+                                docker ps -a
+                                echo "[ERROR] RabbitMQ logs:"
+                                docker logs stockpro-rabbitmq || true
+                                exit 1
+                            }
                     '''
                 }
             }
