@@ -22,6 +22,8 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
       RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "0.8"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - stockpro-network
     deploy:
@@ -516,4 +518,6 @@ networks:
 
 volumes:
   product-uploads:
+    driver: local
+  rabbitmq_data:
     driver: local

@@ -114,13 +114,17 @@ CIEOF
                     sh '''
                         trap 'rm -f .env' EXIT
                         cp $ENV_FILE .env
-                        # Stop & remove any existing backend containers (from any previous session)
+
+                        # Stop & remove any existing backend containers
                         docker rm -f \
                             stockpro-eureka stockpro-rabbitmq stockpro-redis \
                             stockpro-auth stockpro-product stockpro-purchase \
                             stockpro-payment stockpro-supplier stockpro-warehouse \
                             stockpro-movement stockpro-analytics stockpro-alert \
                             stockpro-gateway 2>/dev/null || true
+
+                        # Remove corrupted RabbitMQ volume (fresh start every deploy)
+                        docker volume rm stockpro_rabbitmq_data 2>/dev/null || true
 
                         # Deploy fresh containers using pre-built images
                         docker compose --env-file .env up -d --no-build --remove-orphans \
